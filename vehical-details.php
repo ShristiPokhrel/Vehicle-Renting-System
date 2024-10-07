@@ -49,6 +49,57 @@ echo "<script>alert('Something went wrong. Please try again');</script>";
 
 }
 
+if(isset($_GET['vhid']) && isset($_SESSION['login'])) {
+  $vehicle_id = intval($_GET['vhid']);
+  $useremail=$_SESSION['login'];
+  $sql = "SELECT * from tblusers where EmailId=:useremail";
+  $query = $dbh -> prepare($sql);
+  $query -> bindParam(':useremail',$useremail, PDO::PARAM_STR);
+  $query->execute();
+  $results=$query->fetchAll(PDO::FETCH_OBJ);
+  $user_id = $results[0]->id; // Assuming the user's ID is stored in the session
+
+  // Insert into tblviews
+  $sql = "INSERT INTO tblviews (user_id, vehicle_id) VALUES (:user_id, :vehicle_id)";
+  $query = $dbh->prepare($sql);
+  $query->bindParam(':user_id', $user_id, PDO::PARAM_INT);
+  $query->bindParam(':vehicle_id', $vehicle_id, PDO::PARAM_INT);
+  $query->execute();
+}
+
+// Recommendation Algorithm
+$sql = "SELECT vehicle_id FROM tblviews WHERE user_id = :user_id ORDER BY view_timestamp DESC LIMIT 1";
+$query = $dbh->prepare($sql);
+$query->bindParam(':user_id', $user_id, PDO::PARAM_INT);
+$query->execute();
+$result = $query->fetch(PDO::FETCH_OBJ);
+
+if ($result) {
+    $last_viewed_vehicle_id = $result->vehicle_id;
+
+    // Fetch the vehicle details to use in recommendations
+    $sql = "SELECT VehiclesBrand, ModelYear, SeatingCapacity FROM tblvehicles WHERE id = :vehicle_id";
+    $query = $dbh->prepare($sql);
+    $query->bindParam(':vehicle_id', $last_viewed_vehicle_id, PDO::PARAM_INT);
+    $query->execute();
+    $vehicle = $query->fetch(PDO::FETCH_OBJ);
+
+    if ($vehicle) {
+        // Recommend similar vehicles based on brand, model year, or seating capacity
+        $sql = "SELECT tblvehicles.* FROM tblvehicles 
+                WHERE (VehiclesBrand = :brand OR ModelYear = :model_year OR SeatingCapacity = :seating_capacity)
+                AND id != :vehicle_id
+                LIMIT 5";
+        $query = $dbh->prepare($sql);
+        $query->bindParam(':brand', $vehicle->VehiclesBrand, PDO::PARAM_INT);
+        $query->bindParam(':model_year', $vehicle->ModelYear, PDO::PARAM_STR);
+        $query->bindParam(':seating_capacity', $vehicle->SeatingCapacity, PDO::PARAM_STR);
+        $query->bindParam(':vehicle_id', $last_viewed_vehicle_id, PDO::PARAM_INT);
+        $query->execute();
+        $recommendations = $query->fetchAll(PDO::FETCH_OBJ);
+    }
+}
+
 ?>
 
 
@@ -413,6 +464,41 @@ foreach($results as $result)
       </div>
     </div>
     <!--/Similar-Cars--> 
+
+
+<!-- Recommendation-Cars -->
+<?php if(isset($_SESSION['login'])): ?> 
+<div class="similar_cars">
+    <h3>Recommended for You</h3>
+    <div class="row">
+        <?php
+        if ($query->rowCount() > 0) {
+            foreach ($recommendations as $rec) { ?>      
+                <div class="col-md-3 grid_listing">
+                    <div class="product-listing-m gray-bg">
+                        <div class="product-listing-img"> 
+                            <a href="vehical-details.php?vhid=<?php echo htmlentities($rec->id); ?>">
+                                <img src="admin/img/vehicleimages/<?php echo htmlentities($rec->Vimage1); ?>" class="img-responsive" alt="image" /> 
+                            </a>
+                        </div>
+                        <div class="product-listing-content">
+                            <h5><a href="vehical-details.php?vhid=<?php echo htmlentities($rec->id); ?>">
+                              <?php echo htmlentities($rec->VehiclesTitle); ?>
+                            </a></h5>
+                            <p class="list-price">$<?php echo htmlentities($rec->PricePerDay); ?></p>
+                            <ul class="features_list">
+                                <li><i class="fa fa-user" aria-hidden="true"></i><?php echo htmlentities($rec->SeatingCapacity); ?> seats</li>
+                                <li><i class="fa fa-calendar" aria-hidden="true"></i><?php echo htmlentities($rec->ModelYear); ?> model</li>
+                                <li><i class="fa fa-car" aria-hidden="true"></i><?php echo htmlentities($rec->FuelType); ?></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+        <?php }} ?>
+    </div>
+</div>
+<?php endif; ?>
+<!-- /Recommendation-Cars --> 
     
   </div>
 </section>
